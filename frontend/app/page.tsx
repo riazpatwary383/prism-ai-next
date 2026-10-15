@@ -168,44 +168,56 @@ export default function Home() {
       let buffer = "";
       let result = "";
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
+      
+while (true) {
+  const { value, done } = await reader.read();
 
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() || "";
+  buffer += decoder.decode(value || new Uint8Array(), {
+    stream: !done,
+  });
 
-        for (const event of events) {
-          const line = event
-            .split("\n")
-            .find((item) => item.startsWith("data: "));
+  const events = buffer.split(/\r?\n\r?\n/);
+  buffer = events.pop() || "";
 
-          if (!line) continue;
+  for (const event of events) {
+    const line = event
+      .split(/\r?\n/)
+      .find((item) => item.startsWith("data:"));
 
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
+    if (!line) continue;
 
-          const parsed = JSON.parse(data);
+    const data = line.slice(5).trim();
 
-          if (parsed.error) {
-            throw new Error(parsed.error);
-          }
+    if (!data || data === "[DONE]") continue;
 
-          if (parsed.text) {
-            result += parsed.text;
+    let parsed;
 
-            setMessages((old) => {
-              const updated = [...old];
-              updated[updated.length - 1] = {
-                role: "assistant",
-                content: result,
-              };
-              return updated;
-            });
-          }
-        }
-      }
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      continue;
+    }
+
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
+
+    if (parsed.text) {
+      result += parsed.text;
+
+      setMessages((old) => {
+        const updated = [...old];
+        updated[updated.length - 1] = {
+          role: "assistant",
+          content: result,
+        };
+        return updated;
+      });
+    }
+  }
+
+  if (done) break;
+}
 
       if (result.trim()) speak(result);
     } catch (err) {
